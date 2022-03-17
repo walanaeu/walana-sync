@@ -1,0 +1,42 @@
+name: buildgo
+
+on:
+  release:
+    types: [published]
+
+env:
+  GITHUB_TOKEN: ${{ github.token }}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: amd64
+            os_name: windows
+            asset_name: walana-sync.exe
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.16.10'
+      - name: Run build
+        run:  | 
+          cd src/
+          GOOS=${{ matrix.os_name }} GOARCH=${{ matrix.target }} go build -o ${{ matrix.asset_name }} main.go
+      - name: Get Release
+        id: get_release
+        uses: bruceadams/get-release@v1.2.0
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.get_release.outputs.upload_url }}
+          asset_path: src/${{ matrix.asset_name }}
+          asset_name: ${{ matrix.asset_name }}
+          asset_content_type: application/octet-stream
