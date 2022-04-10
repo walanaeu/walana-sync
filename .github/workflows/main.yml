@@ -26,7 +26,7 @@ jobs:
       - name: Run build
         run:  | 
           cd src/
-          GOOS=${{ matrix.os_name }} GOARCH=${{ matrix.target }} go build -o ${{ matrix.asset_name }} main.go
+          GOOS=${{ matrix.os_name }} GOARCH=${{ matrix.target }} go build -o ${{ matrix.asset_name }} main.go jtl.go mssql.go
       - name: Get Release
         id: get_release
         uses: bruceadams/get-release@v1.2.0
