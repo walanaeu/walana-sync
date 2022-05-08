@@ -1,16 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/snappy"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
+	_ "github.com/golang/snappy"
 )
 
 type Queries struct {
@@ -70,7 +74,11 @@ func requestTasks() {
 func downloadTasks(url string, target interface{}) error {
 
 	// get the data
-	resp, err := http.Get(url)
+	client := &http.Client{}
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Add("X-Walana-Accept-Encoding", "snappy")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -82,13 +90,39 @@ func downloadTasks(url string, target interface{}) error {
 
 	defer resp.Body.Close()
 
-	return json.NewDecoder(resp.Body).Decode(target)
+	enc := resp.Header.Get("X-Walana-Encoding")
+	if enc == "snappy" {
+		// decompress (snappy block style)
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		decoded, _ := snappy.Decode(nil, buf.Bytes())
+		reader := bytes.NewReader(decoded)
+		return json.NewDecoder(reader).Decode(target)
+	} else {
+		return json.NewDecoder(resp.Body).Decode(target)
+	}
+
 }
 
 func sendTasksResult(code string, data string, url string) error {
+
+	if strings.ToLower(compress) == "true" {
+		// compression (snappy block style)
+		encoded := snappy.Encode(nil, []byte(data))
+		data = string(encoded)
+	}
+
 	// get the data
 	u := url + code + "/"
-	resp, err := http.Post(u, "application/json", strings.NewReader(data))
+	client := &http.Client{}
+	r, _ := http.NewRequest("POST", u, strings.NewReader(data))
+	r.Header.Set("Content-Type", "application/json")
+
+	if strings.ToLower(compress) == "true" {
+		r.Header.Set("X-Walana-Encoding", "snappy")
+	}
+
+	resp, err := client.Do(r)
 	if err != nil {
 		return err
 	}
@@ -124,7 +158,10 @@ func executeQuery(query string) (string, error) {
 	}
 	defer db.Close()
 
+	start := time.Now()
 	rows, err2 := db.Query(query)
+	elapsed := time.Since(start)
+
 	if err2 != nil {
 		log.Println("error executing query")
 		log.Println(err2)
@@ -135,7 +172,8 @@ func executeQuery(query string) (string, error) {
 	count := len(columns)
 
 	var v struct {
-		Data []interface{} // `json:"data"`
+		Data    []interface{} // `json:"data"`
+		Elapsed string
 	}
 
 	for rows.Next() {
@@ -153,14 +191,19 @@ func executeQuery(query string) (string, error) {
 		m = make(map[string]interface{})
 		for i := range columns {
 			if strings.HasPrefix(columns[i], "float") {
-				m[columns[i]] = fmt.Sprintf("%s", values[i])
-
+				m[columns[i]] = values[i]
+				if values[i] != nil {
+					m[columns[i]] = fmt.Sprintf("%s", values[i])
+				}
 			} else {
 				m[columns[i]] = values[i]
 			}
 		}
 		v.Data = append(v.Data, m)
 	}
+
+	v.Elapsed = fmt.Sprintf("%s", elapsed)
+
 	jsonMsg, err := json.Marshal(v)
 
 	return string(jsonMsg), nil

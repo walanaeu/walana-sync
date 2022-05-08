@@ -20,6 +20,7 @@ var test string
 var debug string
 var importi string
 var query string
+var compress string
 var baseUrl string
 
 func main() {
@@ -49,6 +50,7 @@ func main() {
 	debug = cfg.Section("").Key("debug").In("false", []string{"True", "true", "TRUE"})
 	importi = cfg.Section("").Key("import").In("true", []string{"False", "false", "FALSE"})
 	query = cfg.Section("").Key("query").In("true", []string{"False", "false", "FALSE"})
+	compress = cfg.Section("").Key("compress").In("true", []string{"False", "false", "FALSE"})
 
 	baseUrl = cfg.Section("").Key("baseUrl").MustString("https://api.walana.eu")
 
